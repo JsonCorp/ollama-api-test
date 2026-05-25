@@ -1,22 +1,39 @@
 import http.server
 import urllib.request
 import json
+import os
+import mimetypes
 
 OLLAMA = "http://localhost:11434"
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            with open("index.html", "rb") as f:
-                self.wfile.write(f.read())
+            self.serve_file("index.html", "text/html; charset=utf-8")
             return
+        local = self.path.lstrip("/")
+        if local.startswith("css/") or local.startswith("js/"):
+            path = os.path.join(os.path.dirname(__file__), local)
+            if os.path.isfile(path):
+                mime, _ = mimetypes.guess_type(path)
+                self.serve_file(path, mime or "application/octet-stream")
+                return
         self.proxy("GET")
 
     def do_POST(self):
         self.proxy("POST")
+
+    def serve_file(self, path, content_type):
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except FileNotFoundError:
+            self.send_error(404)
 
     def proxy(self, method):
         body = None

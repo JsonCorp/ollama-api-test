@@ -10,8 +10,9 @@ Ollama API로 로컬 LLM을 다루는 샘플 프로젝트.
 
 ```
 브라우저 (http://localhost:8080)
+    ↑ css/style.css + js/app.js
     ↓ HTTP (같은 출처, CORS 문제 없음)
-Python 프록시 서버 (server.py)
+Python 프록시 서버 (server.py)  ← index.html + css/ + js/ 정적 파일 서빙
     ↓ HTTP
 Ollama API 서버 (http://localhost:11434)
     ↓
@@ -201,5 +202,15 @@ print(ask("llama3.2", "양자 얽힘을 설명해줘"))
 
 ## 파일 구성
 
+```
+├── index.html          # HTML 구조
+├── css/style.css       # 스타일
+├── js/app.js           # 클라이언트 로직 (모듈)
+├── server.py           # Python 프록시 서버 (정적 파일 + API 프록시)
+└── README.md
+```
+
 - `index.html` — Ollama API를 웹에서 바로 테스트할 수 있는 샘플 페이지 (chat/generate 전환 지원)
-- `server.py` — CORS 문제를 우회하기 위한 Python 프록시 서버 (HTML 서빙 + API 프록시)
+- `css/style.css` — 분리된 스타일시트
+- `js/app.js` — ES module 방식의 클라이언트 로직
+- `server.py` — CORS 문제를 우회하기 위한 Python 프록시 서버 (정적 파일 서빙 + API 프록시)
