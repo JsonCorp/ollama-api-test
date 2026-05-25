@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ollama Local LLM Chat</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; height: 100vh; display: flex; justify-content: center; align-items: center; }
+  .container { width: 800px; height: 90vh; background: #fff; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,.1); display: flex; flex-direction: column; overflow: hidden; }
+  header { padding: 18px 24px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #666; margin-left: auto; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+  .dot.online { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,.4); }
+  .dot.offline { background: #ef4444; }
+  .model-bar { padding: 12px 24px; background: #f8f9fb; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .model-bar label { font-size: 13px; font-weight: 600; color: #555; }
+  .model-bar select { padding: 6px 12px; border: 1px solid #d0d0d0; border-radius: 8px; font-size: 14px; background: #fff; flex: 1; max-width: 260px; cursor: pointer; outline: none; }
+  .model-bar select:focus { border-color: #6366f1; }
+  .model-bar .hint { font-size: 12px; color: #999; }
+  .chat-area { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: #6366f1; color: #fff; border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: #f0f0f5; color: #1a1a2e; border-bottom-left-radius: 4px; }
+  .msg.system { align-self: center; background: #fef3c7; color: #92400e; font-size: 13px; border-radius: 8px; text-align: center; max-width: 100%; }
+  .msg .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: #888; margin-bottom: 4px; }
+  .msg.user .label { color: rgba(255,255,255,.7); }
+  .msg.loading .dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+  @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } 100% { content: ''; } }
+  .input-area { padding: 16px 24px; border-top: 1px solid #e8e8e8; display: flex; gap: 10px; flex-shrink: 0; background: #fff; }
+  .input-area textarea { flex: 1; padding: 10px 14px; border: 1px solid #d0d0d0; border-radius: 10px; font-size: 14px; font-family: inherit; resize: none; outline: none; min-height: 44px; max-height: 120px; line-height: 1.5; }
+  .input-area textarea:focus { border-color: #6366f1; }
+  .input-area button { padding: 10px 24px; background: #6366f1; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .15s; }
+  .input-area button:hover { background: #4f46e5; }
+  .input-area button:disabled { background: #a5b4fc; cursor: not-allowed; }
+  .info-box { padding: 14px 24px; background: #f0fdf4; border-top: 1px solid #dcfce7; font-size: 12px; color: #166534; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .info-box code { background: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  @media (max-width: 840px) { .container { width: 100%; height: 100vh; border-radius: 0; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Ollama Chat</h1>
+    <div class="status">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">연결 확인 중...</span>
+    </div>
+  </header>
+
+  <div class="model-bar">
+    <label for="modelSelect">모델</label>
+    <select id="modelSelect">
+      <option value="">모델 목록을 불러오는 중...</option>
+    </select>
+    <span class="hint">· 모델을 바꿔도 코드는 그대로</span>
+  </div>
+
+  <div class="chat-area" id="chatArea">
+    <div class="msg system">
+      👋 안녕하세요! 로컬 Ollama LLM과 대화해보세요.<br>
+      모델을 선택하고 메시지를 입력하세요.
+    </div>
+  </div>
+
+  <div class="input-area">
+    <textarea id="inputBox" rows="1" placeholder="메시지를 입력하세요..." disabled></textarea>
+    <button id="sendBtn" disabled>전송</button>
+  </div>
+
+  <div class="info-box" id="infoBox">
+    <span>🔗</span>
+    <span><code id="endpointDisplay">http://localhost:11434/api/chat</code> 모델 이름만 바꾸면 다른 LLM으로 교체됩니다</span>
+  </div>
+</div>
+
+<script>
+const OLLAMA_HOST = 'http://localhost:11434';
+const chatArea = document.getElementById('chatArea');
+const inputBox = document.getElementById('inputBox');
+const sendBtn = document.getElementById('sendBtn');
+const modelSelect = document.getElementById('modelSelect');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const endpointDisplay = document.getElementById('endpointDisplay');
+
+let isLoading = false;
+
+async function checkConnection() {
+  try {
+    const res = await fetch(`${OLLAMA_HOST}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error('Not OK');
+    statusDot.className = 'dot online';
+    statusText.textContent = 'Ollama 연결됨';
+    return true;
+  } catch {
+    statusDot.className = 'dot offline';
+    statusText.textContent = 'Ollama 연결 안 됨';
+    return false;
+  }
+}
+
+async function loadModels() {
+  modelSelect.innerHTML = '<option value="">불러오는 중...</option>';
+  try {
+    const res = await fetch(`${OLLAMA_HOST}/api/tags`);
+    const data = await res.json();
+    const models = data.models || [];
+    if (models.length === 0) throw new Error('No models');
+    modelSelect.innerHTML = '';
+    models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.name;
+      opt.textContent = m.name;
+      modelSelect.appendChild(opt);
+    });
+    if (models.length > 0) {
+      inputBox.disabled = false;
+      sendBtn.disabled = false;
+    }
+    addSystemMsg(`📦 ${models.length}개 모델 불러옴 · ${models.map(m => m.name).join(', ')}`);
+  } catch {
+    modelSelect.innerHTML = '<option value="">모델을 불러올 수 없음</option>';
+    addSystemMsg('⚠️ Ollama 서버에서 모델 목록을 가져올 수 없습니다. Ollama가 실행 중인지 확인하세요.');
+  }
+}
+
+async function sendMessage() {
+  const text = inputBox.value.trim();
+  if (!text || isLoading) return;
+
+  const model = modelSelect.value;
+  if (!model) {
+    addSystemMsg('⚠️ 먼저 모델을 선택하세요.');
+    return;
+  }
+
+  inputBox.value = '';
+  inputBox.style.height = 'auto';
+
+  addMsg('user', text);
+
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'msg assistant loading';
+  loadingDiv.innerHTML = '<div class="label">🤖 assistant</div><span class="dots">응답 생성 중</span>';
+  chatArea.appendChild(loadingDiv);
+  chatArea.scrollTop = chatArea.scrollHeight;
+  isLoading = true;
+  sendBtn.disabled = true;
+  inputBox.disabled = true;
+
+  try {
+    const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: text }],
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errText}`);
+    }
+
+    const data = await res.json();
+    const reply = data.message?.content || '(응답 없음)';
+    loadingDiv.innerHTML = `<div class="label">🤖 ${model}</div>${escapeHtml(reply)}`;
+  } catch (err) {
+    loadingDiv.innerHTML = `<div class="label">⚠️ 오류</div>요청 실패: ${escapeHtml(err.message)}`;
+  }
+
+  isLoading = false;
+  sendBtn.disabled = false;
+  inputBox.disabled = false;
+  inputBox.focus();
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function addMsg(role, content) {
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const label = role === 'user' ? '🙋 you' : `🤖 ${modelSelect.value || 'assistant'}`;
+  div.innerHTML = `<div class="label">${label}</div>${escapeHtml(content)}`;
+  chatArea.appendChild(div);
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function addSystemMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'msg system';
+  div.textContent = text;
+  chatArea.appendChild(div);
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+modelSelect.addEventListener('change', () => {
+  endpointDisplay.textContent = `${OLLAMA_HOST}/api/chat  ·  model: ${modelSelect.value || '(선택 안 함)'}`;
+});
+
+inputBox.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+inputBox.addEventListener('input', () => {
+  inputBox.style.height = 'auto';
+  inputBox.style.height = Math.min(inputBox.scrollHeight, 120) + 'px';
+});
+
+sendBtn.addEventListener('click', sendMessage);
+
+(async function init() {
+  const ok = await checkConnection();
+  if (ok) {
+    await loadModels();
+    if (modelSelect.value) {
+      endpointDisplay.textContent = `${OLLAMA_HOST}/api/chat  ·  model: ${modelSelect.value}`;
+    }
+  } else {
+    modelSelect.innerHTML = '<option value="">Ollama 서버에 연결할 수 없음</option>';
+    addSystemMsg('❌ http://localhost:11434 에 연결할 수 없습니다. Ollama가 실행 중인지 확인하세요.\n터미널에서 ollama serve 명령어로 실행할 수 있습니다.');
+  }
+})();
+</script>
+</body>
+</html>
