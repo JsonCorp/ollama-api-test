@@ -18,6 +18,21 @@ Ollama API 서버 (http://localhost:11434)
 Qwen / Llama / Gemma 등 로컬 모델
 ```
 
+## Ollama 설치
+
+```powershell
+# Ollama Windows 설치
+irm https://ollama.com/install.ps1 | iex
+
+# 모델 다운로드 및 실행 (설치+실행)
+ollama run qwen2.5:3b
+```
+
+설치된 모델 확인:
+```powershell
+curl http://localhost:11434/api/tags
+```
+
 ## 실행
 
 ```powershell
