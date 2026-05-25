@@ -19,6 +19,10 @@
   .model-bar select { padding: 6px 12px; border: 1px solid #d0d0d0; border-radius: 8px; font-size: 14px; background: #fff; flex: 1; max-width: 260px; cursor: pointer; outline: none; }
   .model-bar select:focus { border-color: #6366f1; }
   .model-bar .hint { font-size: 12px; color: #999; }
+  .mode-tabs { display: flex; border-bottom: 1px solid #e8e8e8; flex-shrink: 0; }
+  .mode-tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; font-weight: 600; cursor: pointer; background: #f8f9fb; color: #888; border-bottom: 2px solid transparent; transition: all .15s; user-select: none; }
+  .mode-tab:hover { color: #555; }
+  .mode-tab.active { background: #fff; color: #6366f1; border-bottom-color: #6366f1; }
   .chat-area { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
   .msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
   .msg.user { align-self: flex-end; background: #6366f1; color: #fff; border-bottom-right-radius: 4px; }
@@ -34,8 +38,28 @@
   .input-area button { padding: 10px 24px; background: #6366f1; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .15s; }
   .input-area button:hover { background: #4f46e5; }
   .input-area button:disabled { background: #a5b4fc; cursor: not-allowed; }
-  .info-box { padding: 14px 24px; background: #f0fdf4; border-top: 1px solid #dcfce7; font-size: 12px; color: #166534; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .stream-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #888; cursor: pointer; user-select: none; white-space: nowrap; }
+  .stream-toggle input { display: none; }
+  .stream-toggle .slider { width: 36px; height: 20px; background: #d0d0d0; border-radius: 10px; position: relative; transition: background .2s; flex-shrink: 0; }
+  .stream-toggle .slider::after { content: ''; width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform .2s; }
+  .stream-toggle input:checked + .slider { background: #6366f1; }
+  .stream-toggle input:checked + .slider::after { transform: translateX(16px); }
+  .typing-cursor { display: inline-block; width: 2px; height: 1em; background: #6366f1; margin-left: 2px; animation: blink 0.8s step-end infinite; vertical-align: text-bottom; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .msg.streaming .label::after { content: ' · typing'; font-weight: 400; color: #6366f1; }
+  .info-box { padding: 14px 24px; background: #f0fdf4; border-top: 1px solid #dcfce7; font-size: 12px; color: #166534; display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
   .info-box code { background: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .compare-toggle { font-size: 11px; color: #6366f1; cursor: pointer; background: none; border: 1px solid #6366f1; border-radius: 6px; padding: 2px 10px; margin-left: auto; }
+  .compare-toggle:hover { background: #6366f1; color: #fff; }
+  .compare-panel { display: none; padding: 16px 24px; background: #f8f9fb; border-top: 1px solid #e8e8e8; font-size: 12px; flex-shrink: 0; }
+  .compare-panel.open { display: block; }
+  .compare-panel table { width: 100%; border-collapse: collapse; }
+  .compare-panel th, .compare-panel td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e8e8e8; }
+  .compare-panel th { background: #f0f0f5; font-weight: 600; color: #555; font-size: 11px; text-transform: uppercase; }
+  .compare-panel td { font-size: 12px; color: #333; }
+  .compare-panel .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge.chat { background: #e0e7ff; color: #4338ca; }
+  .badge.gen { background: #fef3c7; color: #92400e; }
   @media (max-width: 840px) { .container { width: 100%; height: 100vh; border-radius: 0; } }
 </style>
 </head>
@@ -57,6 +81,10 @@
     <span class="hint">· 모델을 바꿔도 코드는 그대로</span>
   </div>
 
+  <div class="mode-tabs">
+    <div class="mode-tab active" data-mode="chat" onclick="switchMode('chat')">💬 /api/chat</div>
+    <div class="mode-tab" data-mode="generate" onclick="switchMode('generate')">⚡ /api/generate</div>
+  </div>
   <div class="chat-area" id="chatArea">
     <div class="msg system">
       👋 안녕하세요! 로컬 Ollama LLM과 대화해보세요.<br>
@@ -67,11 +95,29 @@
   <div class="input-area">
     <textarea id="inputBox" rows="1" placeholder="메시지를 입력하세요..." disabled></textarea>
     <button id="sendBtn" disabled>전송</button>
+    <label class="stream-toggle">
+      <input type="checkbox" id="streamCheck">
+      <span class="slider"></span>
+      <span>stream</span>
+    </label>
   </div>
 
   <div class="info-box" id="infoBox">
     <span>🔗</span>
-    <span><code id="endpointDisplay">http://localhost:11434/api/chat</code> 모델 이름만 바꾸면 다른 LLM으로 교체됩니다</span>
+    <span><code id="endpointDisplay">http://localhost:11434/api/chat</code> · 모델 이름만 바꾸면 다른 LLM으로 교체됩니다</span>
+    <span style="font-size:11px;color:#999" id="modeLabel">stream: false</span>
+    <button class="compare-toggle" onclick="toggleCompare()">차이점 보기</button>
+  </div>
+  <div class="compare-panel" id="comparePanel">
+    <table>
+      <tr><th>항목</th><th><span class="badge chat">/api/chat</span></th><th><span class="badge gen">/api/generate</span></th></tr>
+      <tr><td>대화 문맥 관리</td><td>messages[]로 자동 관리</td><td>직접 처리해야 함</td></tr>
+      <tr><td>role 구분</td><td>user/assistant/system 지원</td><td>없음 (단일 prompt)</td></tr>
+      <tr><td>system prompt</td><td>role: system 으로 구조적 지원</td><td>prompt에 직접 포함</td></tr>
+      <tr><td>멀티턴 대화</td><td>messages 누적 → 적합</td><td>직접 context 구성 → 불편</td></tr>
+      <tr><td>단순 생성</td><td>가능</td><td>더 단순</td></tr>
+      <tr><td>ChatGPT 스타일</td><td>적합</td><td>부적합</td></tr>
+    </table>
   </div>
 </div>
 
@@ -86,6 +132,7 @@ const statusText = document.getElementById('statusText');
 const endpointDisplay = document.getElementById('endpointDisplay');
 
 let isLoading = false;
+let currentMode = 'chat';
 
 async function checkConnection() {
   try {
@@ -136,29 +183,48 @@ async function sendMessage() {
     return;
   }
 
+  const useStream = document.getElementById('streamCheck').checked;
+
   inputBox.value = '';
   inputBox.style.height = 'auto';
 
-  addMsg('user', text);
+  const roleLabel = currentMode === 'chat' ? '🙋 you' : '📝 prompt';
+  addMsg(roleLabel, text, 'user');
 
-  const loadingDiv = document.createElement('div');
-  loadingDiv.className = 'msg assistant loading';
-  loadingDiv.innerHTML = '<div class="label">🤖 assistant</div><span class="dots">응답 생성 중</span>';
-  chatArea.appendChild(loadingDiv);
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'msg assistant';
+  const labelDiv = document.createElement('div');
+  labelDiv.className = 'label';
+  labelDiv.textContent = `🤖 ${model}`;
+  msgDiv.appendChild(labelDiv);
+  const timeSpan = document.createElement('span');
+  timeSpan.style.cssText = 'font-size:11px;color:#999;margin-left:8px;font-weight:400;';
+  labelDiv.appendChild(timeSpan);
+  const contentSpan = document.createElement('span');
+  msgDiv.appendChild(contentSpan);
+  chatArea.appendChild(msgDiv);
   chatArea.scrollTop = chatArea.scrollHeight;
+
   isLoading = true;
   sendBtn.disabled = true;
   inputBox.disabled = true;
 
+  const startTime = performance.now();
+  let timerInterval = setInterval(() => {
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+    timeSpan.textContent = `⏱ ${elapsed}s`;
+  }, 100);
+
   try {
-    const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
+    const endpoint = currentMode === 'chat' ? '/api/chat' : '/api/generate';
+    const body = currentMode === 'chat'
+      ? { model, messages: [{ role: 'user', content: text }], stream: useStream }
+      : { model, prompt: text, stream: useStream };
+
+    const res = await fetch(`${OLLAMA_HOST}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: text }],
-        stream: false,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -166,11 +232,50 @@ async function sendMessage() {
       throw new Error(`HTTP ${res.status}: ${errText}`);
     }
 
-    const data = await res.json();
-    const reply = data.message?.content || '(응답 없음)';
-    loadingDiv.innerHTML = `<div class="label">🤖 ${model}</div>${escapeHtml(reply)}`;
+    if (useStream) {
+      msgDiv.classList.add('streaming');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let reply = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const chunk = JSON.parse(line);
+            const token = currentMode === 'chat'
+              ? chunk.message?.content || ''
+              : chunk.response || '';
+            reply += token;
+            contentSpan.textContent = reply;
+            chatArea.scrollTop = chatArea.scrollHeight;
+          } catch { }
+        }
+      }
+      msgDiv.classList.remove('streaming');
+    } else {
+      const data = await res.json();
+      const reply = currentMode === 'chat'
+        ? data.message?.content
+        : data.response;
+      contentSpan.textContent = reply || '(응답 없음)';
+    }
+
+    const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
+    clearInterval(timerInterval);
+    timeSpan.textContent = `⏱ ${totalTime}s ✅`;
   } catch (err) {
-    loadingDiv.innerHTML = `<div class="label">⚠️ 오류</div>요청 실패: ${escapeHtml(err.message)}`;
+    clearInterval(timerInterval);
+    const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
+    timeSpan.textContent = `⏱ ${totalTime}s ❌`;
+    contentSpan.textContent = `⚠️ 요청 실패: ${err.message}`;
   }
 
   isLoading = false;
@@ -180,10 +285,9 @@ async function sendMessage() {
   chatArea.scrollTop = chatArea.scrollHeight;
 }
 
-function addMsg(role, content) {
+function addMsg(label, content, cls) {
   const div = document.createElement('div');
-  div.className = `msg ${role}`;
-  const label = role === 'user' ? '🙋 you' : `🤖 ${modelSelect.value || 'assistant'}`;
+  div.className = `msg ${cls}`;
   div.innerHTML = `<div class="label">${label}</div>${escapeHtml(content)}`;
   chatArea.appendChild(div);
   chatArea.scrollTop = chatArea.scrollHeight;
@@ -197,6 +301,22 @@ function addSystemMsg(text) {
   chatArea.scrollTop = chatArea.scrollHeight;
 }
 
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  const endpoint = mode === 'chat' ? '/api/chat' : '/api/generate';
+  endpointDisplay.textContent = `${OLLAMA_HOST}${endpoint}  ·  model: ${modelSelect.value || '(선택 안 함)'}`;
+  document.getElementById('modeLabel').textContent = mode === 'chat' ? 'messages[] + role' : 'prompt';
+  inputBox.placeholder = mode === 'chat' ? '메시지를 입력하세요...' : '프롬프트를 입력하세요...';
+  document.querySelectorAll('.compare-panel .badge').forEach(b => b.style.opacity = b.classList.contains(mode === 'chat' ? 'chat' : 'gen') ? '1' : '.4');
+  chatArea.innerHTML = '';
+  addSystemMsg(`🔄 ${endpoint} 모드로 전환됨 (stream 옵션으로 실시간 타이핑 효과 테스트 가능)`);
+}
+
+function toggleCompare() {
+  document.getElementById('comparePanel').classList.toggle('open');
+}
+
 function escapeHtml(str) {
   const d = document.createElement('div');
   d.textContent = str;
@@ -204,7 +324,8 @@ function escapeHtml(str) {
 }
 
 modelSelect.addEventListener('change', () => {
-  endpointDisplay.textContent = `${OLLAMA_HOST}/api/chat  ·  model: ${modelSelect.value || '(선택 안 함)'}`;
+  const endpoint = currentMode === 'chat' ? '/api/chat' : '/api/generate';
+  endpointDisplay.textContent = `${OLLAMA_HOST}${endpoint}  ·  model: ${modelSelect.value || '(선택 안 함)'}`;
 });
 
 inputBox.addEventListener('keydown', e => {
@@ -223,7 +344,8 @@ sendBtn.addEventListener('click', sendMessage);
   if (ok) {
     await loadModels();
     if (modelSelect.value) {
-      endpointDisplay.textContent = `${OLLAMA_HOST}/api/chat  ·  model: ${modelSelect.value}`;
+      const endpoint = currentMode === 'chat' ? '/api/chat' : '/api/generate';
+      endpointDisplay.textContent = `${OLLAMA_HOST}${endpoint}  ·  model: ${modelSelect.value}`;
     }
   } else {
     modelSelect.innerHTML = '<option value="">Ollama 서버에 연결할 수 없음</option>';
